@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>📢 Telegram Archive Viewer</title>
+<style>
+:root{--bg:#0a0a0f;--card:#13131c;--card2:#18181f;--border:#252535;--accent:#4d9eff;--accent2:#6366f1;--text:#dde;--dim:#667;--ok:#4ade80;--warn:#fbbf24;--danger:#f87171}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:0;width:260px;height:100vh;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;transition:transform .3s}
+.sidebar.collapsed{transform:translateX(-260px)}
+.toggle-btn{position:fixed;left:260px;top:16px;width:32px;height:32px;background:var(--card);border:1px solid var(--border);border-left:none;border-radius:0 8px 8px 0;cursor:pointer;font-size:1rem;z-index:101;transition:left .3s;color:var(--text)}
+.sidebar.collapsed+.toggle-btn{left:0;border-radius:0 8px 8px 0}
+.sidebar-header{padding:16px;background:linear-gradient(135deg,#131320,#1a1a2a);border-bottom:1px solid var(--border)}
+.sidebar-header h2{font-size:1rem;color:var(--accent)}
+.sidebar-header .total{font-size:.75rem;color:var(--dim);margin-top:4px}
+.channel-list{flex:1;overflow-y:auto;padding:8px}
+.channel-item{padding:10px 14px;border-radius:8px;cursor:pointer;margin-bottom:4px;font-size:.88rem;transition:all .2s;border:1px solid transparent;display:flex;align-items:center;gap:8px;overflow:hidden}
+.channel-item:hover{background:var(--card2)}
+.channel-item.active{background:rgba(77,158,255,.12);border-color:var(--accent)}
+.channel-item .chan-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;background:var(--border)}
+.channel-item .chan-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.channel-item .chan-count{font-size:.7rem;color:var(--dim);white-space:nowrap}
+.channel-item .chan-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);flex-shrink:0}
+.channel-item .chan-dot.old{background:var(--warn)}
+.channel-item .chan-dot.stale{background:var(--dim)}
+
+/* Main content */
+.main{margin-left:260px;transition:margin-left .3s;min-height:100vh;display:flex;flex-direction:column}
+.main.expanded{margin-left:0}
+.main-header{padding:14px 24px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:50;backdrop-filter:blur(12px)}
+.main-header .chan-title{font-size:1.1rem;font-weight:600;color:var(--accent)}
+.main-header .chan-username{font-size:.8rem;color:var(--dim)}
+.main-header .chan-stats{font-size:.78rem;color:var(--dim);margin-left:auto}
+.main-header .reload-btn{padding:6px 16px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:.82rem;transition:all .2s}
+.main-header .reload-btn:hover{background:#3a8ee8}
+
+/* Progress */
+.progress-wrap{padding:10px 24px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;font-size:.8rem;color:var(--dim)}
+.progress-wrap .track{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.progress-wrap .fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .3s}
+
+/* Search */
+.search-wrap{padding:12px 24px;background:var(--card);border-bottom:1px solid var(--border);display:flex;gap:8px}
+.search-wrap input{flex:1;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.88rem;outline:none;transition:border-color .2s}
+.search-wrap input:focus{border-color:var(--accent)}
+.search-wrap input::placeholder{color:var(--dim)}
+.search-wrap select{padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.85rem;cursor:pointer}
+
+/* Messages */
+.messages{padding:20px;display:flex;flex-direction:column;gap:12px;max-width:900px;width:100%;margin:0 auto;padding-bottom:100px}
+.message{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:all .3s;animation:fadeUp .4s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.message:hover{border-color:var(--accent);box-shadow:0 0 24px rgba(77,158,255,.07)}
+.msg-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border);font-size:.75rem}
+.msg-date{color:var(--accent);font-weight:500;font-family:monospace}
+.msg-id{color:var(--dim);font-family:monospace}
+.msg-stats{display:flex;gap:12px;padding:4px 14px;background:rgba(255,255,255,.01);font-size:.75rem;color:var(--dim)}
+.msg-body{padding:12px 14px}
+.msg-text{white-space:pre-wrap;word-break:break-word;line-height:1.7;font-size:.92rem;max-height:400px;overflow:hidden;position:relative}
+.msg-text.expanded{max-height:none}
+.msg-text::after{content:'';position:absolute;bottom:0;left:0;right:0;height:40px;background:linear-gradient(transparent,var(--card));pointer-events:none}
+.msg-text.expanded::after{display:none}
+.expand-btn{display:block;width:100%;padding:6px;background:rgba(255,255,255,.03);border:none;cursor:pointer;color:var(--accent);font-size:.8rem;text-align:center;transition:background .2s}
+.expand-btn:hover{background:rgba(77,158,255,.1)}
+.msg-media{padding:8px 14px 12px;display:flex;flex-direction:column;gap:8px}
+.msg-photo{width:100%;border-radius:10px;cursor:zoom-in;display:block}
+.msg-video{width:100%;border-radius:10px}
+.media-link{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);padding:8px 14px;border-radius:8px;text-decoration:none;color:var(--text);font-size:.84rem;border:1px solid var(--border);transition:all .2s;cursor:pointer}
+.media-link:hover{background:rgba(77,158,255,.1);border-color:var(--accent)}
+.media-link .icon{font-size:1.1rem}
+.media-link .fname{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.media-link .fsize{color:var(--dim);font-size:.75rem}
+.media-link .dl{color:var(--accent);margin-left:auto}
+
+/* Controls */
+.controls{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:90}
+.ctrl-btn{width:50px;height:50px;border-radius:50%;border:1px solid var(--border);cursor:pointer;font-size:1.2rem;display:flex;align-items:center;justify-content:center;transition:all .2s;box-shadow:0 4px 16px rgba(0,0,0,.5);background:var(--card);color:var(--text)}
+.ctrl-btn:hover{transform:scale(1.1);border-color:var(--accent)}
+
+/* Counter */
+.counter{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(19,19,28,.95);padding:8px 24px;border-radius:24px;font-size:.85rem;color:var(--dim);border:1px solid var(--border);z-index:90;backdrop-filter:blur(8px)}
+.counter .cur{color:var(--accent);font-weight:600}
+
+/* Status bar */
+.status{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(19,19,28,.95);padding:6px 18px;border-radius:16px;font-size:.78rem;color:var(--dim);border:1px solid var(--border);z-index:90;backdrop-filter:blur(8px)}
+
+/* Loading */
+.loading-overlay{position:fixed;inset:0;background:rgba(10,10,15,.85);display:flex;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(8px)}
+.loading-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px 48px;text-align:center}
+.loading-box .spinner{font-size:2rem;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-box .text{margin-top:12px;color:var(--dim);font-size:.88rem}
+.loading-box .sub{color:var(--accent);font-size:.82rem;margin-top:4px}
+
+/* Lightbox */
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:1000;cursor:zoom-out}
+#lightbox img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px}
+#lightbox video{max-width:95vw;max-height:95vh}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* Empty */
+.empty-state{text-align:center;padding:80px 20px;color:var(--dim)}
+.empty-state .icon{font-size:3rem;margin-bottom:16px}
+
+/* Hidden */
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- Sidebar Toggle -->
+<button class="toggle-btn" onclick="toggleSidebar()">☰</button>
+
+<!-- Sidebar -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>📢 Telegram Archive</h2>
+    <div class="total" id="totalChannels">Loading...</div>
+  </div>
+  <div class="channel-list" id="channelList"></div>
+</nav>
+
+<!-- Main -->
+<main class="main" id="main">
+  <div class="main-header" id="mainHeader">
+    <div>
+      <div class="chan-title" id="chanTitle">Select a channel</div>
+      <div class="chan-username" id="chanUsername"></div>
+    </div>
+    <div class="chan-stats" id="chanStats"></div>
+    <button class="reload-btn hidden" id="reloadBtn" onclick="reloadChannel()">↻ Reload</button>
+  </div>
+  
+  <div class="progress-wrap hidden" id="progressWrap">
+    <span id="progressLabel">Loading...</span>
+    <div class="track"><div class="fill" id="progressFill" style="width:0%"></div></div>
+    <span id="progressPct">0%</span>
+  </div>
+  
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Search messages..." oninput="filterMessages()">
+    <select id="sortSelect" onchange="sortMessages()">
+      <option value="newest">Newest First</option>
+      <option value="oldest">Oldest First</option>
+    </select>
+  </div>
+  
+  <div class="messages" id="messagesContainer"></div>
+</main>
+
+<!-- Counter -->
+<div class="counter"><span class="cur" id="curIdx">0</span> / <span id="totalIdx">0</span></div>
+
+<!-- Status -->
+<div class="status" id="statusBar"></div>
+
+<!-- Controls -->
+<div class="controls">
+  <button class="ctrl-btn" onclick="scrollToPrev()">▲</button>
+  <button class="ctrl-btn" onclick="scrollToNext()">▼</button>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()"></div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay hidden" id="loadingOverlay">
+  <div class="loading-box">
+    <div class="spinner">⏳</div>
+    <div class="text" id="loadingText">Loading...</div>
+    <div class="sub" id="loadingSub"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+const state = {
+  channels: {},       // channelName -> {info, messages}
+  current: null,      // current channel
+  filtered: [],        // filtered message indices
+  currentIdx: 0,
+  sortOrder: 'newest',
+};
+
+// ── Init ──
+(async function init() {
+  showLoading('Loading channels...', '');
+  
+  // Load all channel JSON files
+  const jsons = document.querySelectorAll('script[type="application/json"]');
+  
+  for (const script of jsons) {
+    try {
+      const data = JSON.parse(script.textContent);
+      if (data.channel && data.messages) {
+        state.channels[data.channel] = {
+          info: data,
+          messages: data.messages,
+        };
+      }
+    } catch(e) {
+      console.error('Parse error:', e);
+    }
+  }
+  
+  renderSidebar();
+  hideLoading();
+  
+  // Auto-select first channel
+  const names = Object.keys(state.channels);
+  if (names.length > 0) {
+    selectChannel(names[0]);
+  }
+})();
+
+// ── Sidebar ──
+function renderSidebar() {
+  const list = document.getElementById('channelList');
+  const total = document.getElementById('totalChannels');
+  
+  const names = Object.keys(state.channels).sort((a, b) => {
+    const aCount = state.channels[a].messages.length;
+    const bCount = state.channels[b].messages.length;
+    return bCount - aCount;
+  });
+  
+  list.innerHTML = names.map(name => {
+    const ch = state.channels[name];
+    const info = ch.info;
+    const avatar = info.photo_b64 
+      ? `<img src="${info.photo_b64}" class="chan-avatar">`
+      : `<div class="chan-avatar" style="display:flex;align-items:center;justify-content:center;font-size:.8rem;color:var(--dim)">📢</div>`;
+    
+    // Check freshness
+    let dotClass = '';
+    if (info.last_updated) {
+      const age = Date.now() - new Date(info.last_updated).getTime();
+      if (age > 86400000) dotClass = 'old';       // > 24h
+      else if (age > 3600000) dotClass = 'stale';  // > 1h
+    }
+    
+    return `
+      <div class="channel-item${dotClass ? ' has-dot' : ''}" onclick="selectChannel('${name}')">
+        ${avatar}
+        <span class="chan-name">${info.name || name}</span>
+        <span class="chan-count">${ch.messages.length}</span>
+        ${dotClass ? `<div class="chan-dot ${dotClass}"></div>` : ''}
+      </div>`;
+  }).join('');
+  
+  total.textContent = `${names.length} channels · ${names.reduce((s, n) => s + state.channels[n].messages.length, 0)} messages`;
+}
+
+// ── Select Channel ──
+function selectChannel(name) {
+  if (!state.channels[name]) return;
+  
+  state.current = name;
+  state.currentIdx = 0;
+  state.sortOrder = 'newest';
+  document.getElementById('sortSelect').value = 'newest';
+  document.getElementById('searchInput').value = '';
+  
+  // Update sidebar active
+  document.querySelectorAll('.channel-item').forEach(el => {
+    el.classList.toggle('active', el.querySelector('.chan-name').textContent === 
+      (state.channels[name].info.name || name));
+  });
+  
+  const info = state.channels[name].info;
+  
+  document.getElementById('chanTitle').textContent = info.name || name;
+  document.getElementById('chanUsername').textContent = info.username || '@' + name;
+  document.getElementById('chanStats').textContent = 
+    `${info.subscribers || '—'} members · ${info.message_count || 0} messages`;
+  
+  if (info.last_updated) {
+    const d = new Date(info.last_updated);
+    document.getElementById('chanStats').textContent += ` · updated ${timeAgo(d)}`;
+  }
+  
+  document.getElementById('reloadBtn').classList.remove('hidden');
+  
+  filterMessages();
+}
+
+// ── Reload ──
+function reloadChannel() {
+  if (!state.current) return;
+  showLoading('Reloading channel...', 'Fetching latest messages...');
+  
+  // In browser, we can't actually reload. Show message.
+  setTimeout(() => {
+    hideLoading();
+    updateStatus('Use daemon to reload: python daemon.py');
+  }, 1000);
+}
+
+// ── Filter & Sort ──
+function filterMessages() {
+  if (!state.current) return;
+  
+  const query = document.getElementById('searchInput').value.toLowerCase();
+  const msgs = state.channels[state.current].messages;
+  
+  if (query) {
+    state.filtered = msgs
+      .map((m, i) => ({ m, i }))
+      .filter(({ m }) => 
+        m.text.toLowerCase().includes(query) ||
+        m.media.some(med => med.name && med.name.toLowerCase().includes(query))
+      )
+      .map(({ i }) => i);
+  } else {
+    state.filtered = msgs.map((_, i) => i);
+  }
+  
+  sortMessages();
+}
+
+function sortMessages() {
+  if (!state.current) return;
+  
+  state.sortOrder = document.getElementById('sortSelect').value;
+  const msgs = state.channels[state.current].messages;
+  
+  if (state.sortOrder === 'newest') {
+    state.filtered.reverse();
+  }
+  
+  renderMessages();
+  updateCounter();
+}
+
+// ── Render Messages ──
+function renderMessages() {
+  const container = document.getElementById('messagesContainer');
+  const msgs = state.channels[state.current].messages;
+  const indices = state.filtered;
+  
+  if (indices.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><div>No messages found</div></div>`;
+    return;
+  }
+  
+    container.innerHTML = indices.map(idx => {
+    const msg = msgs[idx];
+    const date = formatDate(msg.date);
+    
+    // Text
+    let textHtml = msg.text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    const isLong = msg.text.length > 500;
+    const textSection = msg.text ? `
+      <div class="msg-body">
+        <div class="msg-text${isLong ? '' : ' expanded'}" id="text-${idx}">${textHtml.replace(/
+/g, '<br>')}</div>
+        ${isLong ? `<button class="expand-btn" onclick="toggleText(${idx})">Show more</button>` : ''}
+      </div>` : '';
+    
+    // Stats
+    const statsHtml = (msg.views || msg.forwards) ? `
+      <div class="msg-stats">
+        ${msg.views ? `<span>👁 ${msg.views}</span>` : ''}
+        ${msg.forwards ? `<span>🔁 ${msg.forwards}</span>` : ''}
+      </div>` : '';
+    
+    // Media
+    let mediaHtml = '';
+    for (const med of msg.media) {
+      if (med.type === 'photo' && med.data) {
+        mediaHtml += `<img src="${med.data}" class="msg-photo" onclick="openLightbox(this.src, 'img')" loading="lazy">`;
+      } else if (med.type === 'video' && med.data) {
+        mediaHtml += `<video class="msg-video" controls><source src="${med.data}" type="${med.mime || 'video/mp4'}">Your browser does not support video.</video>`;
+      } else if (med.type === 'document') {
+        const icon = getFileIcon(med.ext);
+        const sizeKB = Math.round((med.size || 0) / 1024);
+        if (med.data) {
+          const fname = med.name + (med.ext ? '.' + med.ext : '');
+          mediaHtml += `<a href="${med.data}" download="${fname}" class="media-link">
+            <span class="icon">${icon}</span>
+            <span class="fname">${med.name}</span>
+            ${med.ext ? `<span>.${med.ext}</span>` : ''}
+            ${sizeKB > 0 ? `<span class="fsize">${sizeKB}KB</span>` : ''}
+            <span class="dl">⬇</span>
+          </a>`;
+        } else if (med.url) {
+          mediaHtml += `<a href="${med.url}" class="media-link" target="_blank">
+            <span class="icon">${icon}</span>
+            <span class="fname">${med.name}</span>
+            ${med.ext ? `<span>.${med.ext}</span>` : ''}
+            <span class="fsize">${sizeKB > 0 ? sizeKB + 'KB' : '⚠️'}</span>
+          </a>`;
+        }
+      }
+    }
+    
+    const mediaSection = mediaHtml ? `<div class="msg-media">${mediaHtml}</div>` : '';
+    
+    return `
+      <div class="message" data-idx="${idx}" id="msg-${idx}">
+        <div class="msg-header">
+          <span class="msg-date">${date}</span>
+          <span class="msg-id">#${msg.id}</span>
+        </div>
+        ${statsHtml}
+        ${textSection}
+        ${mediaSection}
+      </div>`;
+  }).join('');
+  
+  // Setup intersection observer
+  setupObserver();
+  updateCounter();
+}
+
+// ── Helpers ──
+function formatDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch { return iso; }
+}
+
+function timeAgo(date) {
+  const secs = Math.floor((Date.now() - date) / 1000);
+  if (secs < 60) return secs + 's ago';
+  if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+  if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+  return Math.floor(secs / 86400) + 'd ago';
+}
+
+function getFileIcon(ext) {
+  const icons = {
+    pdf: '📕', doc: '📘', docx: '📘', txt: '📝',
+    xls: '📗', xlsx: '📗', csv: '📗',
+    zip: '📦', rar: '📦', '7z': '📦', tar: '📦', gz: '📦',
+    mp3: '🎵', wav: '🎵', ogg: '🎵', flac: '🎵', aac: '🎵',
+    jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', webp: '🖼️', svg: '🖼️',
+    mp4: '🎬', mkv: '🎬', avi: '🎬', mov: '🎬', webm: '🎬',
+    exe: '⚙️', apk: '📱', ipa: '📱',
+    py: '🐍', js: '📜', json: '📋', xml: '📋', html: '🌐',
+    npz: '📊', npy: '📊', csv: '📊',
+  };
+  return icons[ext?.toLowerCase()] || '📎';
+}
+
+function toggleText(idx) {
+  const el = document.getElementById('text-' + idx);
+  if (!el) return;
+  el.classList.toggle('expanded');
+  el.nextElementSibling.textContent = el.classList.contains('expanded') ? 'Show less' : 'Show more';
+}
+
+// ── Lightbox ──
+function openLightbox(src, type) {
+  const lb = document.getElementById('lightbox');
+  lb.innerHTML = '';
+  if (type === 'img') {
+    const img = document.createElement('img');
+    img.src = src;
+    lb.appendChild(img);
+  }
+  lb.style.display = 'flex';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+
+// ── Navigation ──
+function setupObserver() {
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        const idx = parseInt(en.target.dataset.idx);
+        state.currentIdx = idx;
+        updateCounter();
+      }
+    });
+  }, { threshold: 0.4 });
+  
+  document.querySelectorAll('.message').forEach(m => obs.observe(m));
+}
+
+function scrollToPrev() {
+  const msgs = document.querySelectorAll('.message');
+  const target = Math.max(0, state.currentIdx - 1);
+  if (msgs[target]) {
+    state.currentIdx = target;
+    msgs[target].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    updateCounter();
+  }
+}
+
+function scrollToNext() {
+  const msgs = document.querySelectorAll('.message');
+  const target = Math.min(msgs.length - 1, state.currentIdx + 1);
+  if (msgs[target]) {
+    state.currentIdx = target;
+    msgs[target].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    updateCounter();
+  }
+}
+
+function updateCounter() {
+  const total = state.filtered.length;
+  document.getElementById('curIdx').textContent = state.currentIdx + 1;
+  document.getElementById('totalIdx').textContent = total;
+  
+  const pct = total > 0 ? ((state.currentIdx + 1) / total * 100).toFixed(1) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+}
+
+// ── Sidebar Toggle ──
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const main = document.getElementById('main');
+  sidebar.classList.toggle('collapsed');
+  main.classList.toggle('expanded');
+  document.querySelector('.toggle-btn').textContent = 
+    sidebar.classList.contains('collapsed') ? '☰' : '✕';
+}
+
+// ── Status ──
+function updateStatus(msg) {
+  document.getElementById('statusBar').textContent = msg;
+}
+
+// ── Loading ──
+function showLoading(text, sub) {
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+  document.getElementById('loadingText').textContent = text;
+  document.getElementById('loadingSub').textContent = sub;
+}
+
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  
+  if (e.key === 'ArrowDown' || e.key === 'j') scrollToNext();
+  if (e.key === 'ArrowUp'   || e.key === 'k') scrollToPrev();
+  if (e.key === 'g') {
+    state.currentIdx = 0;
+    document.querySelectorAll('.message')[0]?.scrollIntoView();
+    updateCounter();
+  }
+  if (e.key === 'G') {
+    const msgs = document.querySelectorAll('.message');
+    state.currentIdx = msgs.length - 1;
+    msgs[state.currentIdx]?.scrollIntoView();
+    updateCounter();
+  }
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === '/') document.getElementById('searchInput').focus();
+});
+
+// ── Progress bar update ──
+function updateProgress(current, total, label) {
+  const wrap = document.getElementById('progressWrap');
+  const fill = document.getElementById('progressFill');
+  const pct = document.getElementById('progressPct');
+  const lbl = document.getElementById('progressLabel');
+  
+  wrap.classList.remove('hidden');
+  lbl.textContent = label;
+  const p = total > 0 ? (current / total * 100).toFixed(0) : 0;
+  fill.style.width = p + '%';
+  pct.textContent = p + '%';
+}
+</script>
+
+</body>
+</html>
